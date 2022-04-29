@@ -1,0 +1,11 @@
+package.path = (string.gsub(_addon.path, '[^\\]+\\?$', '')) .. 'giko-common\\' .. '?.lua;' .. package.path
+
+_addon.author 	= 'giko'
+_addon.name 	= 'giko-sync'
+_addon.version 	= '1.0.0'
+
+console      = require('core.console')
+synchronizer = require('core.synchronizer')
+
+ashita.register_event('load', console.command.load)
+ashita.register_event('command', console.input)
