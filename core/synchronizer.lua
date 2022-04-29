@@ -58,7 +58,7 @@ syncronizer.push = function(s_tods)
         local c_tod = json:decode(tod)
         local s_tod = s_tods[mob]
 
-        if c_tod.created_at > s_tod.created_at then
+        if s_tod ~= nil and c_tod.created_at > s_tod.created_at then
             c_tods[mob] = json:encode(c_tod)
         end
 
