@@ -6,5 +6,5 @@
     "path" : "",
     "user" : "",
     "password" : "",
-    "interval" : 300
+    "interval" : "30s"
 }
