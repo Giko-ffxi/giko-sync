@@ -46,12 +46,16 @@ end
 
 console.command.start = function(args)
 
-    ashita.timer.create('sync', common.to_seconds(config.interval), 0, function()
+    if config.url.pull ~= nil and config.url.push ~= nil and config.user ~= nil and config.password  ~= nil and config.interval ~= nil then
         
-        local s_tods = synchronizer.fetch()
-        local c_tods = synchronizer.push(s_tods)
+        ashita.timer.create('sync', common.to_seconds(config.interval), 0, function()
+        
+            local s_tods = synchronizer.fetch()
+            local c_tods = synchronizer.push(s_tods)
     
-    end)
+        end)
+        
+    end
 
 end
 
