@@ -9,15 +9,15 @@ local json    = require('json.json')
 local http    = require('socket.http')
 local ltn12   = require("ltn12")
 
-local syncronizer = {}
+local tod = {}
 
-syncronizer.fetch = function()
+tod.get = function()
 
     local resp = ''
     local c_tods = {}
     local s_tods = {}
     local u_flag = false
-    local ok, code = http.request({method = "GET", url = config.url.pull, headers = {authorization = "Basic " .. (mime.b64(config.user .. ':' .. config.password))}, sink = function(chunk) if chunk ~= nil and string.match(chunk, '.+\|\{[^}]*\}') then resp = resp .. chunk end return true end })
+    local ok, code = http.request({method = "GET", url = config.tod.get, headers = {authorization = "Basic " .. (mime.b64(config.auth.user .. ':' .. config.auth.password))}, sink = function(chunk) if chunk ~= nil and string.match(chunk, '.+\|\{[^}]*\}') then resp = resp .. chunk end return true end })
 
     if ok and code == 200 and resp ~= '' then
 
@@ -46,7 +46,7 @@ syncronizer.fetch = function()
 
 end
 
-syncronizer.push = function(s_tods)
+tod.set = function(s_tods)
 
     local resp   = ''    
     local lines  = cache.get_all(death.cache)
@@ -65,11 +65,11 @@ syncronizer.push = function(s_tods)
     end
     
     if common.size(c_tods) > 0 then
-        http.request({method = "POST", url = config.url.push, headers = {authorization = "Basic " .. (mime.b64(config.user .. ':' .. config.password)), ["content-type"] = "application/x-www-form-urlencoded", ["content-length"] = string.len(string.format('tod=%s', json:encode(c_tods)))}, source = ltn12.source.string(string.format('tod=%s', json:encode(c_tods))), sink = function(chunk) if chunk ~= nil then resp = resp .. chunk end return true end })
+        http.request({method = "POST", url = config.tod.set, headers = {authorization = "Basic " .. (mime.b64(config.auth.user .. ':' .. config.auth.password)), ["content-type"] = "application/x-www-form-urlencoded", ["content-length"] = string.len(string.format('tod=%s', json:encode(c_tods)))}, source = ltn12.source.string(string.format('tod=%s', json:encode(c_tods))), sink = function(chunk) if chunk ~= nil then resp = resp .. chunk end return true end })
     end
 
     return c_tods
 
 end
 
-return syncronizer
+return tod

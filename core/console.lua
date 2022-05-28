@@ -46,12 +46,12 @@ end
 
 console.command.start = function(args)
 
-    if config.url.pull ~= nil and config.url.push ~= nil and config.user ~= nil and config.password  ~= nil and config.interval ~= nil then
+    if config.auth.user ~= nil and config.auth.password  ~= nil and config.tod.get ~= nil and config.tod.set ~= nil and config.tod.interval ~= nil then
         
-        ashita.timer.create('sync', common.to_seconds(config.interval), 0, function()
+        ashita.timer.create('sync', common.to_seconds(config.tod.interval), 0, function()
         
-            local s_tods = synchronizer.fetch()
-            local c_tods = synchronizer.push(s_tods)
+            local s_tods = tod.get()
+            local c_tods = tod.set(s_tods)
     
         end)
         
@@ -67,7 +67,7 @@ end
 
 console.command.status = function(args)
 
-    print(string.format('[Sync][%s][Interval:%s]', ashita.timer.is_timer('sync') and 'On' or 'Off', config.interval))
+    print(string.format('[Sync][%s]', ashita.timer.is_timer('sync') and 'On' or 'Off'))
 
 end
 
