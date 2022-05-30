@@ -31,7 +31,9 @@ tod.get = function()
 
             if c_tod == nil or (c_tod.created_at ~= nil and c_tod.created_at < s_tod.created_at) then                
 
-                table.insert(linkshell, string.format("[ToD][%s][%s][%s]", monster.get(mob).names.nq[1], common.gmt_to_local_date(s_tod.gmt), s_tod.day)) 
+                if s_tod.gmt ~= c_tod.gmt or s_tod.day ~= c_tod.day then
+                    table.insert(linkshell, string.format("[ToD][%s][%s][%s][Sheet update]", monster.get(mob).names.nq[1], common.gmt_to_local_date(s_tod.gmt), s_tod.day))
+                end
 
                 c_tods[mob] = json:encode(s_tod)
                 u_flag = true
@@ -44,12 +46,13 @@ tod.get = function()
 
         if u_flag then
 
-            cache.set(death.cache, c_tods)             
-            chat.command('giko alerts reload')
+            cache.set(death.cache, c_tods)         
 
             for k,v in ipairs(linkshell) do      
                 ashita.timer.create(string.format('giko-sync-%s', k), (k * 2), 1, function() chat.linkshell(v) end)                
-            end
+            end    
+
+            chat.command('giko alerts reload')
 
         end
 
