@@ -37,7 +37,8 @@ tod.get = function()
         end
 
         if u_flag then
-            cache.set(death.cache, c_tods)
+            cache.set(death.cache, c_tods) 
+            chat.command('giko alerts reload')
         end
 
     end
