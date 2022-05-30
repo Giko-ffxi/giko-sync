@@ -17,6 +17,7 @@ tod.get = function()
     local c_tods = {}
     local s_tods = {}
     local u_flag = false
+    local linkshell = {}
     local ok, code = http.request({method = "GET", url = config.tod.get, headers = {authorization = "Basic " .. (mime.b64(config.auth.user .. ':' .. config.auth.password))}, sink = function(chunk) if chunk ~= nil and string.match(chunk, '.+\|\{[^}]*\}') then resp = resp .. chunk end return true end })
 
     if ok and code == 200 and resp ~= '' then
@@ -24,12 +25,17 @@ tod.get = function()
         for r in string.gmatch(resp, "[^\r\n]+") do
             
             local mob, data = string.match(r, "(.+\)|(\{[^}]*\})")
+            
             local s_tod = json:decode(data)
             local c_tod = death.get_tod(mob)
 
-            if c_tod == nil or (c_tod.created_at ~= nil and c_tod.created_at < s_tod.created_at) then
+            if c_tod == nil or (c_tod.created_at ~= nil and c_tod.created_at < s_tod.created_at) then                
+
+                table.insert(linkshell, string.format("[ToD][%s][%s][%s]", monster.get(mob).names.nq[1], common.gmt_to_local_date(s_tod.gmt), s_tod.day)) 
+
                 c_tods[mob] = json:encode(s_tod)
                 u_flag = true
+
             end
 
             s_tods[mob] = s_tod
@@ -37,8 +43,14 @@ tod.get = function()
         end
 
         if u_flag then
-            cache.set(death.cache, c_tods) 
+
+            cache.set(death.cache, c_tods)             
             chat.command('giko alerts reload')
+
+            for k,v in ipairs(linkshell) do      
+                ashita.timer.create(string.format('giko-sync-%s', k), (k * 2), 1, function() chat.linkshell(v) end)                
+            end
+
         end
 
     end
