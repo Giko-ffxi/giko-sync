@@ -74,7 +74,7 @@ tod.set = function(s_tods)
         local c_tod = json:decode(tod)
         local s_tod = s_tods[mob]
 
-        if s_tod ~= nil and c_tod.created_at > s_tod.created_at then
+        if s_tod ~= nil and c_tod.gmt ~= s_tod.gmt and c_tod.day ~= s_tod.day and c_tod.created_at > s_tod.created_at then
             c_tods[mob] = json:encode(c_tod)
         end
 
