@@ -49,8 +49,6 @@ tod.get = function()
 
             cache.set(death.cache, c_tods)        
 
-            print('sync get update')
-
             for k,v in ipairs(linkshell) do      
                 ashita.timer.create(string.format('giko-sync-%s', k), (k * 2), 1, function() chat.linkshell(v) end)                
             end    
@@ -82,11 +80,6 @@ tod.set = function(s_tods)
             local s_tod = s_tods[string.lower(mob.names.nq[1])]
 
             if s_tod ~= nil and c_tod.created_at > s_tod.created_at and (c_tod.gmt ~= s_tod.gmt or c_tod.day ~= s_tod.day) then
-
-                print('sync set update' ..  c_tod.day ~= s_tod.day)
-                print('s_tod' .. json:encode(s_tod))
-                print('c_tod' .. json:encode(c_tod))
-
                 c_tods[string.lower(mob.names.nq[1])] = json:encode(c_tod)
             end
 
