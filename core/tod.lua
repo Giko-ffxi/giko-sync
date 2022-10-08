@@ -32,7 +32,7 @@ tod.get = function()
 
             if c_tod == nil or (c_tod.created_at ~= nil and c_tod.created_at < s_tod.created_at) then                
 
-                if s_tod.gmt ~= c_tod.gmt or s_tod.day ~= c_tod.day then
+                if c_tod == nil or s_tod.gmt ~= c_tod.gmt or s_tod.day ~= c_tod.day then
                     table.insert(linkshell, string.format("[ToD][%s][%s][%s][Sheet update]", mob.names.nq[1], common.gmt_to_local_date(s_tod.gmt), s_tod.day or 0))
                 end
 
@@ -48,6 +48,8 @@ tod.get = function()
         if u_flag then
 
             cache.set(death.cache, c_tods)        
+
+            print('sync get update')
 
             for k,v in ipairs(linkshell) do      
                 ashita.timer.create(string.format('giko-sync-%s', k), (k * 2), 1, function() chat.linkshell(v) end)                
@@ -80,6 +82,11 @@ tod.set = function(s_tods)
             local s_tod = s_tods[string.lower(mob.names.nq[1])]
 
             if s_tod ~= nil and c_tod.created_at > s_tod.created_at and (c_tod.gmt ~= s_tod.gmt or c_tod.day ~= s_tod.day) then
+
+                print('sync set update' ..  c_tod.day ~= s_tod.day)
+                print('s_tod' .. json:encode(s_tod))
+                print('c_tod' .. json:encode(c_tod))
+
                 c_tods[string.lower(mob.names.nq[1])] = json:encode(c_tod)
             end
 
@@ -88,7 +95,9 @@ tod.set = function(s_tods)
     end
     
     if common.size(c_tods) > 0 then
+        
         http.request({method = "POST", url = config.tod.set, headers = {authorization = "Basic " .. (mime.b64(config.auth.user .. ':' .. config.auth.password)), ["content-type"] = "application/x-www-form-urlencoded", ["content-length"] = string.len(string.format('tod=%s', json:encode(c_tods)))}, source = ltn12.source.string(string.format('tod=%s', json:encode(c_tods))), sink = function(chunk) if chunk ~= nil then resp = resp .. chunk end return true end })
+    
     end
 
     return c_tods
