@@ -24,35 +24,36 @@ tod.get = function()
 
         for r in string.gmatch(resp, "[^\r\n]+") do
             
-            local mob, data = string.match(r, "(.+\)|(\{[^}]*\})")
+            local name, data = string.match(r, "(.+\)|(\{[^}]*\})")
             
+            local mob   = monster.get(name)
             local s_tod = json:decode(data)
-            local c_tod = death.get_tod(mob)
+            local c_tod = (mob ~= nil and cache.get(death.cache, mob.names.nq[1]) and json:decode(cache.get(death.cache, mob.names.nq[1]))) or nil
 
             if c_tod == nil or (c_tod.created_at ~= nil and c_tod.created_at < s_tod.created_at) then                
 
                 if s_tod.gmt ~= c_tod.gmt or s_tod.day ~= c_tod.day then
-                    table.insert(linkshell, string.format("[ToD][%s][%s][%s][Sheet update]", monster.get(mob).names.nq[1], common.gmt_to_local_date(s_tod.gmt), s_tod.day))
+                    table.insert(linkshell, string.format("[ToD][%s][%s][%s][Sheet update]", mob.names.nq[1], common.gmt_to_local_date(s_tod.gmt), s_tod.day or 0))
                 end
 
-                c_tods[mob] = json:encode(s_tod)
+                c_tods[string.lower(mob.names.nq[1])] = json:encode(s_tod)
                 u_flag = true
 
             end
 
-            s_tods[mob] = s_tod
+            s_tods[string.lower(mob.names.nq[1])] = s_tod
 
         end
 
         if u_flag then
 
-            cache.set(death.cache, c_tods)         
+            cache.set(death.cache, c_tods)        
 
             for k,v in ipairs(linkshell) do      
                 ashita.timer.create(string.format('giko-sync-%s', k), (k * 2), 1, function() chat.linkshell(v) end)                
             end    
 
-            chat.command('giko alerts reload')
+            chat.command('giko alerts', 'reload')
 
         end
 
@@ -69,13 +70,19 @@ tod.set = function(s_tods)
     local writer = io.open(death.cache, 'r')
     local c_tods = {}
 
-    for mob,tod in pairs(lines) do
+    for name, tod in pairs(lines) do
 
-        local c_tod = json:decode(tod)
-        local s_tod = s_tods[mob]
+        local mob = monster.get(name)
 
-        if s_tod ~= nil and c_tod.created_at > s_tod.created_at and (c_tod.gmt ~= s_tod.gmt or c_tod.day ~= s_tod.day) then
-            c_tods[mob] = json:encode(c_tod)
+        if common.in_array_key(s_tods, string.lower(mob.names.nq[1])) then
+
+            local c_tod = json:decode(tod)
+            local s_tod = s_tods[string.lower(mob.names.nq[1])]
+
+            if s_tod ~= nil and c_tod.created_at > s_tod.created_at and (c_tod.gmt ~= s_tod.gmt or c_tod.day ~= s_tod.day) then
+                c_tods[string.lower(mob.names.nq[1])] = json:encode(c_tod)
+            end
+
         end
 
     end
