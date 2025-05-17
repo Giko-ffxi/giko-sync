@@ -144,10 +144,10 @@ tod.set = function(s_tods_from_get)
             if returned_body and returned_code == 202 then
                 -- print(string.format("[Giko/TOD SET] Successfully sent. Response: %s", resp))
             elseif returned_body then
-                print(string.format("[Giko/TOD SET] Sent, but HTTP status was: %s. Response: %s", tostring(returned_code),
-                    returned_body))
+                --print(string.format("[Giko/TOD SET] Sent, but HTTP status was: %s. Response: %s", tostring(returned_code),
+                --returned_body))
             else
-                print(string.format("[Giko/TOD SET] HTTP request 'ok' was false/nil. Error from http.request: %s",
+                print(string.format("[Giko/TOD SET] HTTP request was false/nil. Error from http.request: %s",
                     tostring(returned_code)))
             end
         end

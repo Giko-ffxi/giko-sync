@@ -8,8 +8,6 @@ import os
 import json
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-import time
-import math
 import configparser
 import uvicorn
 import multiprocessing
@@ -234,7 +232,7 @@ async def update_google_sheets(tod_data: dict):
             info: dict = json.loads(string_info)
             gmt_time = info.get("gmt")
             day = info.get("day")
-            update_time = math.floor(time.time())
+            update_time = info.get("created_at")
             pacific_time_object = await convert_gmt_to_pacific(gmt_time)
             pacific_time_str_output = pacific_time_object.strftime("%m-%d-%Y %H:%M:%S")
             worksheet.update_acell(column_c_cell_label, pacific_time_str_output)
