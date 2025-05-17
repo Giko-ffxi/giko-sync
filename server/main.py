@@ -15,7 +15,16 @@ import uvicorn
 import multiprocessing
 import sys
 
-if getattr(sys, 'frozen', False):
+DEFAULT_CONFIG_CONTENT = """
+[GOOGLE_SHEETS_API]
+SCOPES = https://www.googleapis.com/auth/spreadsheets,https://www.googleapis.com/auth/drive.file
+SERVICE_ACCOUNT_FILE = key.json
+SPREADSHEET_URL = https://docs.google.com/spreadsheets/d/1EwF3InRV5pJYYbDWAYhBoqvXAAbJA74I5Zv8trj_ios/edit?gid=0
+WORKSHEET_NAME = Sheet23
+"""
+
+
+if getattr(sys, "frozen", False):
     # If the application is run as a bundle (compiled by PyInstaller)
     # sys.executable is the path to the .exe file
     application_base_dir = os.path.dirname(sys.executable)
@@ -28,6 +37,7 @@ logger: logging.Logger = logging.getLogger(__name__)
 worksheet: Optional[gspread.Worksheet] = None
 config = configparser.ConfigParser()
 app_config = {}
+
 
 async def initialize_config():
     global app_config, config
@@ -68,14 +78,14 @@ async def initialize_config():
 
             app_config["SPREADSHEET_URL"] = api_config_section.get("SPREADSHEET_URL")
             if not app_config["SPREADSHEET_URL"] or app_config["SPREADSHEET_URL"] == "YOUR_SPREADSHEET_URL_HERE":
-                 raise ValueError("SPREADSHEET_URL is not configured in config.ini or is still default.")
+                raise ValueError("SPREADSHEET_URL is not configured in config.ini or is still default.")
             app_config["WORKSHEET_NAME"] = api_config_section.get("WORKSHEET_NAME", "Sheet1")
         else:
             raise ValueError("[GOOGLE_SHEETS_API] section not found in config file.")
 
     except FileNotFoundError as fnf_error:
         logger.error(str(fnf_error))
-        raise 
+        raise
     except (configparser.Error, ValueError) as conf_error:
         logger.error(f"Configuration Error: {conf_error}")
         raise
@@ -97,9 +107,11 @@ async def initialize_google_sheet():
         logger.error("Service account file path not configured. Cannot initialize Google Sheet.")
         worksheet = None
         return
-    
+
     if not os.path.exists(SERVICE_ACCOUNT_FILE_PATH):
-        logger.error(f"Service account file '{SERVICE_ACCOUNT_FILE_PATH}' not found as specified in config.ini. Please ensure it's in the same directory as the executable and correctly named.")
+        logger.error(
+            f"Service account file '{SERVICE_ACCOUNT_FILE_PATH}' not found as specified in config.ini. Please ensure it's in the same directory as the executable and correctly named."
+        )
         worksheet = None
         return
     try:
@@ -286,6 +298,7 @@ if __name__ == "__main__":
         print("AN ERROR OCCURRED:")
         print(str(e))
         import traceback
+
         traceback.print_exc()
         print("\nPress Enter to exit...")
         input()
