@@ -13,43 +13,76 @@ import math
 import configparser
 import uvicorn
 import multiprocessing
+import sys
+
+if getattr(sys, 'frozen', False):
+    # If the application is run as a bundle (compiled by PyInstaller)
+    # sys.executable is the path to the .exe file
+    application_base_dir = os.path.dirname(sys.executable)
+else:
+    # If run as a normal .py script
+    # os.path.abspath(__file__) is the path to this script
+    application_base_dir = os.path.dirname(os.path.abspath(__file__))
 
 logger: logging.Logger = logging.getLogger(__name__)
 worksheet: Optional[gspread.Worksheet] = None
-
 config = configparser.ConfigParser()
-config_file_path = "config.ini"
 app_config = {}
 
-
 async def initialize_config():
-    global app_config
+    global app_config, config
+    config_file_to_read = os.path.join(application_base_dir, "config.ini")
+    app_config["CONFIG_FILE_ACTUAL_PATH"] = config_file_to_read
+
+    config = configparser.ConfigParser()
+
+    if not os.path.exists(config_file_to_read):
+        logger.warning(f"Configuration file '{config_file_to_read}' not found. Creating a default one.")
+        try:
+            with open(config_file_to_read, "w", encoding="utf-8") as f_config:
+                f_config.write(DEFAULT_CONFIG_CONTENT)
+            logger.info(f"Default configuration file created at '{config_file_to_read}'.")
+            raise FileNotFoundError(
+                f"IMPORTANT: Configuration file '{config_file_to_read}' was just created with default values. "
+                f"Please edit it with your specific details and then restart the application."
+            )
+        except IOError as e:
+            logger.error(f"Could not create default configuration file at '{config_file_to_read}': {e}")
+            raise
+
     try:
-        if not config.read(config_file_path):
-            raise FileNotFoundError(f"Configuration file '{config_file_path}' not found or is empty.")
+        if not config.read(config_file_to_read, encoding="utf-8"):
+            raise ValueError(f"Configuration file '{config_file_to_read}' found but could not be properly read or is empty.")
+
         if "GOOGLE_SHEETS_API" in config:
             api_config_section = config["GOOGLE_SHEETS_API"]
 
             scopes_str = api_config_section.get("SCOPES")
             app_config["SCOPES"] = [scope.strip() for scope in scopes_str.split(",")] if scopes_str else []
 
-            app_config["SERVICE_ACCOUNT_FILE"] = api_config_section.get("SERVICE_ACCOUNT_FILE", "key.json")
-            SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-            app_config["SERVICE_ACCOUNT_FILE_PATH"] = os.path.join(SCRIPT_DIR, app_config["SERVICE_ACCOUNT_FILE"])
+            service_account_filename = api_config_section.get("SERVICE_ACCOUNT_FILE")
+            if not service_account_filename:
+                raise ValueError("SERVICE_ACCOUNT_FILE is not defined in config.ini under [GOOGLE_SHEETS_API]")
+            app_config["SERVICE_ACCOUNT_FILE"] = service_account_filename
+            app_config["SERVICE_ACCOUNT_FILE_PATH"] = os.path.join(application_base_dir, service_account_filename)
 
             app_config["SPREADSHEET_URL"] = api_config_section.get("SPREADSHEET_URL")
+            if not app_config["SPREADSHEET_URL"] or app_config["SPREADSHEET_URL"] == "YOUR_SPREADSHEET_URL_HERE":
+                 raise ValueError("SPREADSHEET_URL is not configured in config.ini or is still default.")
             app_config["WORKSHEET_NAME"] = api_config_section.get("WORKSHEET_NAME", "Sheet1")
         else:
-            raise ValueError("Warning: [GOOGLE_SHEETS_API] section not found in config file.")
+            raise ValueError("[GOOGLE_SHEETS_API] section not found in config file.")
 
     except FileNotFoundError as fnf_error:
-        logger.error(fnf_error)
-    except configparser.NoSectionError as ns_error:
-        logger.error(f"Error: Section not found in config file - {ns_error}")
-    except configparser.NoOptionError as no_error:
-        logger.error(f"Error: Option not found in config file - {no_error}")
+        logger.error(str(fnf_error))
+        raise 
+    except (configparser.Error, ValueError) as conf_error:
+        logger.error(f"Configuration Error: {conf_error}")
+        raise
     except Exception as e:
-        logger.error(f"An unexpected error occurred while reading the configuration: {e}")
+        logger.error(f"An unexpected error occurred while processing the configuration: {e}")
+        logger.debug(traceback.format_exc())
+        raise
 
 
 async def initialize_google_sheet():
@@ -60,8 +93,14 @@ async def initialize_google_sheet():
     SPREADSHEET_URL = app_config.get("SPREADSHEET_URL")
     WORKSHEET_NAME = app_config.get("WORKSHEET_NAME")
 
+    if not SERVICE_ACCOUNT_FILE_PATH:
+        logger.error("Service account file path not configured. Cannot initialize Google Sheet.")
+        worksheet = None
+        return
+    
     if not os.path.exists(SERVICE_ACCOUNT_FILE_PATH):
-        logger.error(f"Service account file '{SERVICE_ACCOUNT_FILE_PATH}' not found. Please ensure it's in the correct location.")
+        logger.error(f"Service account file '{SERVICE_ACCOUNT_FILE_PATH}' not found as specified in config.ini. Please ensure it's in the same directory as the executable and correctly named.")
+        worksheet = None
         return
     try:
         creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE_PATH, scopes=SCOPES)
@@ -240,5 +279,13 @@ async def convert_pacific_to_gmt(pacific_time_str: str):
 
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=False, workers=1)
+    try:
+        multiprocessing.freeze_support()
+        uvicorn.run(app, host="127.0.0.1", port=8000, reload=False, workers=1)
+    except Exception as e:
+        print("AN ERROR OCCURRED:")
+        print(str(e))
+        import traceback
+        traceback.print_exc()
+        print("\nPress Enter to exit...")
+        input()
