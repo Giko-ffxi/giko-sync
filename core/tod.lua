@@ -64,7 +64,7 @@ tod.get = function()
                             if c_tod == nil or s_tod.gmt ~= c_tod.gmt or s_tod.day ~= c_tod.day then
                                 table.insert(tell,
                                     string.format("@giko set-tod %s %s %s --force", mob.names.nq[1],
-                                        common.gmt_to_local_date(s_tod.gmt), s_tod.day or 0))
+                                        common.gmt_to_local_date(s_tod.gmt), s_tod.day + 1 or 0))
                             end
                             c_tods[string.lower(mob.names.nq[1])] = json:encode(s_tod)
                             u_flag = true
