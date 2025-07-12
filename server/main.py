@@ -13,6 +13,7 @@ import configparser
 import uvicorn
 import multiprocessing
 import sys
+from dateutil import parser
 
 DEFAULT_CONFIG_CONTENT = """
 [GOOGLE_SHEETS_API]
@@ -184,8 +185,9 @@ async def get_tod():
 
         all_values = worksheet.get_all_values()
 
-        data_rows = all_values[1:] 
+        data_rows = all_values[1:]
         strings: list[str] = []
+        processed_names: set[str] = set()
 
         for row in data_rows:
             nm = row[name_col_index] if len(row) > name_col_index else None
@@ -195,7 +197,13 @@ async def get_tod():
 
             if not nm or not pst:
                 continue
-            
+
+            normalized_name = str(nm).lower()
+            if normalized_name in processed_names:
+                continue
+
+            processed_names.add(normalized_name)
+
             gmt_str_output = None
             gmt = await convert_pacific_to_gmt(pst)
             if isinstance(gmt, datetime):
@@ -204,7 +212,7 @@ async def get_tod():
                 day = int(day) if day else None
             except (ValueError, TypeError):
                 day = None
-            
+
             try:
                 last_updated = int(last_updated) if last_updated else None
             except (ValueError, TypeError):
@@ -253,22 +261,23 @@ async def update_google_sheets(tod_data: dict):
             row_number_to_update = found_row_index + 1
             tod_col_label = f"{app_config.get('TOD_COL')}{row_number_to_update}"
             info: dict = json.loads(string_info)
-            gmt_time = info.get("gmt", "")
+            gmt_time = info.get("gmt")
             day = info.get("day")
             update_time = info.get("created_at")
-            pacific_time_object = await convert_gmt_to_pacific(gmt_time)
-            if isinstance(pacific_time_object, datetime):
-                pacific_time_str_output = pacific_time_object.strftime("%m-%d-%Y %H:%M:%S")
-                worksheet.update_acell(tod_col_label, pacific_time_str_output)
-            if day:
-                worksheet.update_acell(f"{app_config.get('DAYS_FOR_HQ_COL')}{row_number_to_update}", day)
-            if update_time:
-                worksheet.update_acell(f"{app_config.get('LAST_UPDATED_COL')}{row_number_to_update}", update_time)
+            if isinstance(gmt_time, str):
+                pacific_time_object = await convert_gmt_to_pacific(gmt_time)
+                if isinstance(pacific_time_object, datetime):
+                    pacific_time_str_output = pacific_time_object.strftime("%m-%d-%Y %H:%M:%S")
+                    worksheet.update_acell(tod_col_label, pacific_time_str_output)
+                    if day:
+                        worksheet.update_acell(f"{app_config.get('DAYS_FOR_HQ_COL')}{row_number_to_update}", day)
+                    if update_time:
+                        worksheet.update_acell(f"{app_config.get('LAST_UPDATED_COL')}{row_number_to_update}", update_time)
 
 
 async def convert_gmt_to_pacific(gmt_time_str: str):
     try:
-        naive_gmt_time = datetime.strptime(gmt_time_str, "%Y-%m-%d %H:%M:%S")
+        naive_gmt_time = parser.parse(gmt_time_str)
         aware_gmt_time = naive_gmt_time.replace(tzinfo=timezone.utc)
         pacific_timezone = ZoneInfo("America/Los_Angeles")
         pacific_time = aware_gmt_time.astimezone(pacific_timezone)
@@ -291,9 +300,7 @@ async def convert_gmt_to_pacific(gmt_time_str: str):
 
 async def convert_pacific_to_gmt(pacific_time_str: str):
     try:
-        processed_time_str = pacific_time_str.replace("\u202f", " ")
-        datetime_format = "%A, %B %d, %Y, %I:%M:%S %p"
-        naive_pacific_time = datetime.strptime(processed_time_str, datetime_format)
+        naive_pacific_time = parser.parse(pacific_time_str)
         pacific_timezone = ZoneInfo("America/Los_Angeles")
         aware_pacific_time = naive_pacific_time.replace(tzinfo=pacific_timezone)
         gmt_time = aware_pacific_time.astimezone(timezone.utc)
