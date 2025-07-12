@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, status, HTTPException, Response, Body, BackgroundTasks
 import gspread
+from gspread.utils import a1_to_rowcol
 from google.oauth2.service_account import Credentials
 from typing import Optional
 import os
@@ -64,6 +65,7 @@ async def initialize_config():
 
         if "GOOGLE_SHEETS_API" in config:
             api_config_section = config["GOOGLE_SHEETS_API"]
+            sheet_config_section = config["SHEET_CONFIG"]
 
             scopes_str = api_config_section.get("SCOPES")
             app_config["SCOPES"] = [scope.strip() for scope in scopes_str.split(",")] if scopes_str else []
@@ -78,6 +80,11 @@ async def initialize_config():
             if not app_config["SPREADSHEET_URL"] or app_config["SPREADSHEET_URL"] == "YOUR_SPREADSHEET_URL_HERE":
                 raise ValueError("SPREADSHEET_URL is not configured in config.ini or is still default.")
             app_config["WORKSHEET_NAME"] = api_config_section.get("WORKSHEET_NAME", "Sheet1")
+
+            app_config["NAME_COL"] = sheet_config_section.get("NAME_COL", "B")
+            app_config["TOD_COL"] = sheet_config_section.get("TOD__COL", "C")
+            app_config["DAYS_FOR_HQ_COL"] = sheet_config_section.get("DAYS_FOR_HQ_COL", "E")
+            app_config["LAST_UPDATED_COL"] = sheet_config_section.get("LAST_UPDATED_COL", "J")
         else:
             raise ValueError("[GOOGLE_SHEETS_API] section not found in config file.")
 
@@ -117,10 +124,10 @@ async def initialize_google_sheet():
         client = gspread.authorize(creds)
 
         logger.info(f"Attempting to open spreadsheet by URL: {SPREADSHEET_URL}")
-        spreadsheet = client.open_by_url(SPREADSHEET_URL)
+        spreadsheet = client.open_by_url(str(SPREADSHEET_URL))
 
         logger.info(f"Attempting to open worksheet by name: '{WORKSHEET_NAME}'")
-        worksheet = spreadsheet.worksheet(WORKSHEET_NAME)
+        worksheet = spreadsheet.worksheet(str(WORKSHEET_NAME))
 
         logger.info(f"Successfully initialized Google Sheet. Spreadsheet: '{spreadsheet.title}', Worksheet: '{worksheet.title}'")
 
@@ -167,28 +174,27 @@ async def health_check():
 @app.get("/tod")
 async def get_tod():
     try:
+        if not worksheet:
+            return Response(content=None, media_type="text/plain; charset=utf-8")
         strings: list[str] = []
         rows = worksheet.get_all_records()
-        for row in rows:
-            nm = row.get("NM")
-            pst = row.get("ToD")
-            day = row.get("Days for HQ")
-            last_updated = row.get("Last Updated")
+        for i, row in enumerate(rows, start=2):
+            gmt_str_output = None
+            day = None
+            last_updated = None
+            nm = worksheet.acell(f"{app_config['NAME_COL']}{i}").value
+            pst = worksheet.acell(f"{app_config['TOD_COL']}{i}").value
+            day = worksheet.acell(f"{app_config['DAYS_FOR_HQ_COL']}{i}").value
+            last_updated = worksheet.acell(f"{app_config['LAST_UPDATED_COL']}{i}").value
             if not nm or not pst:
                 continue
-            try:
-                gmt = await convert_pacific_to_gmt(pst)
+            gmt = await convert_pacific_to_gmt(pst)
+            if isinstance(gmt, datetime):
                 gmt_str_output = gmt.strftime("%Y-%m-%d %H:%M:%S")
-            except Exception:
-                gmt_str_output = None
-            try:
+            if day:
                 day = int(day)
-            except Exception:
-                day = None
-            try:
+            if last_updated:
                 last_updated = int(last_updated)
-            except Exception:
-                last_updated = None
 
             data_for_json = {
                 "created_at": last_updated,
@@ -197,7 +203,7 @@ async def get_tod():
                 "name": nm,
             }
             json_part = json.dumps(data_for_json, separators=(",", ":"))
-            string = f"{nm.lower()}|{json_part}"
+            string = f"{str(nm).lower()}|{json_part}"
             strings.append(string)
         plain_text_response_content = "\n".join(strings)
         return Response(content=plain_text_response_content, media_type="text/plain; charset=utf-8")
@@ -218,26 +224,32 @@ async def set_tod(background_tasks: BackgroundTasks, tod_data: dict = Body(...))
 
 
 async def update_google_sheets(tod_data: dict):
-    mobs_in_column = worksheet.col_values(2)
+    if worksheet is None:
+        return
+    mobs_col_index = a1_to_rowcol(f"{app_config['NAME_COL']}1")[1]
+    mobs_in_column = worksheet.col_values(mobs_col_index)
     for data in tod_data.items():
         mob, string_info = data
         found_row_index = -1
         for i, name_in_sheet in enumerate(mobs_in_column):
-            if name_in_sheet.lower() == str(mob).lower():
+            if str(name_in_sheet).lower() == str(mob).lower():
                 found_row_index = i
                 break
         if found_row_index != -1:
             row_number_to_update = found_row_index + 1
-            column_c_cell_label = f"C{row_number_to_update}"
+            tod_col_label = f"{app_config.get('TOD_COL')}{row_number_to_update}"
             info: dict = json.loads(string_info)
-            gmt_time = info.get("gmt")
+            gmt_time = info.get("gmt", "")
             day = info.get("day")
             update_time = info.get("created_at")
             pacific_time_object = await convert_gmt_to_pacific(gmt_time)
-            pacific_time_str_output = pacific_time_object.strftime("%m-%d-%Y %H:%M:%S")
-            worksheet.update_acell(column_c_cell_label, pacific_time_str_output)
-            worksheet.update_acell(f"E{row_number_to_update}", day)
-            worksheet.update_acell(f"J{row_number_to_update}", update_time)
+            if isinstance(pacific_time_object, datetime):
+                pacific_time_str_output = pacific_time_object.strftime("%m-%d-%Y %H:%M:%S")
+                worksheet.update_acell(tod_col_label, pacific_time_str_output)
+            if day:
+                worksheet.update_acell(f"{app_config.get('DAYS_FOR_HQ_COL')}{row_number_to_update}", day)
+            if update_time:
+                worksheet.update_acell(f"{app_config.get('LAST_UPDATED_COL')}{row_number_to_update}", update_time)
 
 
 async def convert_gmt_to_pacific(gmt_time_str: str):
