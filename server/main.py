@@ -176,25 +176,39 @@ async def get_tod():
     try:
         if not worksheet:
             return Response(content=None, media_type="text/plain; charset=utf-8")
+
+        name_col_index = a1_to_rowcol(f"{app_config['NAME_COL']}1")[1] - 1
+        tod_col_index = a1_to_rowcol(f"{app_config['TOD_COL']}1")[1] - 1
+        days_col_index = a1_to_rowcol(f"{app_config['DAYS_FOR_HQ_COL']}1")[1] - 1
+        last_updated_col_index = a1_to_rowcol(f"{app_config['LAST_UPDATED_COL']}1")[1] - 1
+
+        all_values = worksheet.get_all_values()
+
+        data_rows = all_values[1:] 
         strings: list[str] = []
-        rows = worksheet.get_all_records()
-        for i, row in enumerate(rows, start=2):
-            gmt_str_output = None
-            day = None
-            last_updated = None
-            nm = worksheet.acell(f"{app_config['NAME_COL']}{i}").value
-            pst = worksheet.acell(f"{app_config['TOD_COL']}{i}").value
-            day = worksheet.acell(f"{app_config['DAYS_FOR_HQ_COL']}{i}").value
-            last_updated = worksheet.acell(f"{app_config['LAST_UPDATED_COL']}{i}").value
-            if not nm or not pst:
+
+        for row in data_rows:
+            nm = row[name_col_index] if len(row) > name_col_index else None
+            pst = row[tod_col_index] if len(row) > tod_col_index else None
+            day = row[days_col_index] if len(row) > days_col_index else None
+            last_updated = row[last_updated_col_index] if len(row) > last_updated_col_index else None
+
+           if not nm or not pst:
                 continue
+            
+            gmt_str_output = None
             gmt = await convert_pacific_to_gmt(pst)
             if isinstance(gmt, datetime):
                 gmt_str_output = gmt.strftime("%Y-%m-%d %H:%M:%S")
-            if day:
-                day = int(day)
-            if last_updated:
-                last_updated = int(last_updated)
+            try:
+                day = int(day) if day else None
+            except (ValueError, TypeError):
+                day = None
+            
+            try:
+                last_updated = int(last_updated) if last_updated else None
+            except (ValueError, TypeError):
+                last_updated = None
 
             data_for_json = {
                 "created_at": last_updated,
