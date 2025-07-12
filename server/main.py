@@ -193,7 +193,7 @@ async def get_tod():
             day = row[days_col_index] if len(row) > days_col_index else None
             last_updated = row[last_updated_col_index] if len(row) > last_updated_col_index else None
 
-           if not nm or not pst:
+            if not nm or not pst:
                 continue
             
             gmt_str_output = None
