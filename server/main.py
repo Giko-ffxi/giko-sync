@@ -270,7 +270,7 @@ async def update_google_sheets(tod_data: dict):
                     pacific_time_str_output = pacific_time_object.strftime("%m-%d-%Y %H:%M:%S")
                     worksheet.update_acell(tod_col_label, pacific_time_str_output)
                     if day:
-                        worksheet.update_acell(f"{app_config.get('DAYS_FOR_HQ_COL')}{row_number_to_update}", int(day) +1)
+                        worksheet.update_acell(f"{app_config.get('DAYS_FOR_HQ_COL')}{row_number_to_update}", day)
                     if update_time:
                         worksheet.update_acell(f"{app_config.get('LAST_UPDATED_COL')}{row_number_to_update}", update_time)
 
