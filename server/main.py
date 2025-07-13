@@ -14,15 +14,8 @@ import uvicorn
 import multiprocessing
 import sys
 from dateutil import parser
-import logging
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s - %(message)s", handlers=[logging.StreamHandler(sys.stdout)])
 
 DEFAULT_CONFIG_CONTENT = """
 [GOOGLE_SHEETS_API]
@@ -279,10 +272,13 @@ async def update_google_sheets(tod_data: dict):
                 if isinstance(pacific_time_object, datetime):
                     pacific_time_str_output = pacific_time_object.strftime("%m-%d-%Y %H:%M:%S")
                     worksheet.update_acell(tod_col_label, pacific_time_str_output)
-                    if day:
-                        worksheet.update_acell(f"{app_config.get('DAYS_FOR_HQ_COL')}{row_number_to_update}", day)
                     if update_time:
                         worksheet.update_acell(f"{app_config.get('LAST_UPDATED_COL')}{row_number_to_update}", update_time)
+                    if day:
+                        logger.debug(day)
+                        if int(day) != 0:
+                            day = day + 1
+                        worksheet.update_acell(f"{app_config.get('DAYS_FOR_HQ_COL')}{row_number_to_update}", day)
 
 
 async def convert_gmt_to_pacific(gmt_time_str: str):
@@ -298,10 +294,10 @@ async def convert_gmt_to_pacific(gmt_time_str: str):
         return None
     except ZoneInfoNotFoundError:
         logger.error(
-        "The 'America/Los_Angeles' timezone was not found. "
-        "Ensure your system's timezone database is up to date, "
-        "or install the 'tzdata' package: pip install tzdata"
-    )
+            "The 'America/Los_Angeles' timezone was not found. "
+            "Ensure your system's timezone database is up to date, "
+            "or install the 'tzdata' package: pip install tzdata"
+        )
         return None
     except Exception as e:
         logger.exception(f"An unexpected error occurred while converting GMT to Pacific: {e}")
@@ -336,6 +332,6 @@ if __name__ == "__main__":
         multiprocessing.freeze_support()
         uvicorn.run(app, host="127.0.0.1", port=8000, reload=False, workers=1)
     except Exception as e:
-        logger.exception(f"An error occurred during application startup.\n{e}", stack_info=True, exc_info=True)        
+        logger.exception(f"An error occurred during application startup.\n{e}", stack_info=True, exc_info=True)
         print("\nPress Enter to exit...")
         input()
