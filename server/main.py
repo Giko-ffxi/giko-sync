@@ -14,6 +14,15 @@ import uvicorn
 import multiprocessing
 import sys
 from dateutil import parser
+import logging
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 
 DEFAULT_CONFIG_CONTENT = """
 [GOOGLE_SHEETS_API]
@@ -29,7 +38,7 @@ if getattr(sys, "frozen", False):
     # sys.executable is the path to the .exe file
     application_base_dir = os.path.dirname(sys.executable)
 else:
-    # If run as a normal .py script
+    # If run as a normal .py scriptP
     # os.path.abspath(__file__) is the path to this script
     application_base_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -232,7 +241,7 @@ async def get_tod():
     except HTTPException as http_exc:
         raise http_exc
     except Exception as e:
-        print(e)
+        logger.exception(f"An unexpected error occurred while processing /tod request\n{e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An unexpected error occurred: {str(e)}",
@@ -241,6 +250,7 @@ async def get_tod():
 
 @app.post("/tod", status_code=status.HTTP_202_ACCEPTED)
 async def set_tod(background_tasks: BackgroundTasks, tod_data: dict = Body(...)):
+    logger.debug(f"Received POST data: {tod_data}")
     background_tasks.add_task(update_google_sheets, tod_data=tod_data)
     return {"bean dip"}
 
@@ -284,17 +294,17 @@ async def convert_gmt_to_pacific(gmt_time_str: str):
 
         return pacific_time
     except ValueError:
-        print(f"Error: The input GMT time string '{gmt_time_str}' is not in the correct format ('YYYY-MM-DD HH:MM:SS').")
+        logger.error(f"The input GMT time string '{gmt_time_str}'")
         return None
     except ZoneInfoNotFoundError:
-        print(
-            "Error: The 'America/Los_Angeles' timezone was not found. "
-            "Ensure your system's timezone database is up to date, "
-            "or install the 'tzdata' package: pip install tzdata"
-        )
+        logger.error(
+        "The 'America/Los_Angeles' timezone was not found. "
+        "Ensure your system's timezone database is up to date, "
+        "or install the 'tzdata' package: pip install tzdata"
+    )
         return None
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        logger.exception(f"An unexpected error occurred while converting GMT to Pacific: {e}")
         return None
 
 
@@ -326,10 +336,6 @@ if __name__ == "__main__":
         multiprocessing.freeze_support()
         uvicorn.run(app, host="127.0.0.1", port=8000, reload=False, workers=1)
     except Exception as e:
-        print("AN ERROR OCCURRED:")
-        print(str(e))
-        import traceback
-
-        traceback.print_exc()
+        logger.exception(f"An error occurred during application startup.\n{e}", stack_info=True, exc_info=True)        
         print("\nPress Enter to exit...")
         input()
