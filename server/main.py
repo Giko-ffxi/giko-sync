@@ -31,7 +31,6 @@ DAYS_FOR_HQ_COL = E
 LAST_UPDATED_COL = J
 """
 
-
 if getattr(sys, "frozen", False):
     # If the application is run as a bundle (compiled by PyInstaller)
     # sys.executable is the path to the .exe file
@@ -45,6 +44,35 @@ logger: logging.Logger = logging.getLogger(__name__)
 worksheet: Optional[gspread.Worksheet] = None
 config = configparser.ConfigParser()
 app_config = {}
+
+CACHE_FILE = "server_cache.json"
+CACHE_FILE_PATH = os.path.join(application_base_dir, CACHE_FILE)
+server_cache = {}
+
+
+def load_cache_from_file():
+    """Loads the cache from the JSON file at startup."""
+    global server_cache
+    try:
+        if os.path.exists(CACHE_FILE_PATH):
+            with open(CACHE_FILE_PATH, "r") as f:
+                server_cache = json.load(f)
+                logger.info(f"Successfully loaded cache from {CACHE_FILE_PATH}")
+        else:
+            logger.info("Cache file not found. Starting with an empty cache.")
+            server_cache = {}
+    except (json.JSONDecodeError, IOError) as e:
+        logger.error(f"Error loading cache file: {e}. Starting with an empty cache.")
+        server_cache = {}
+
+
+def save_cache_to_file():
+    """Saves the current cache state to the JSON file."""
+    try:
+        with open(CACHE_FILE_PATH, "w") as f:
+            json.dump(server_cache, f, indent=4)
+    except IOError as e:
+        logger.error(f"CRITICAL: Could not save cache to file: {e}")
 
 
 async def initialize_config():
@@ -161,6 +189,7 @@ async def initialize_google_sheet():
 async def lifespan(app: FastAPI):
     await initialize_config()
     await initialize_google_sheet()
+    load_cache_from_file()
     yield
 
 
@@ -256,35 +285,66 @@ async def set_tod(background_tasks: BackgroundTasks, tod_data: dict = Body(...))
 
 async def update_google_sheets(tod_data: dict):
     if worksheet is None:
+        logger.warning("Worksheet is not initialized. Skipping update.")
         return
-    mobs_col_index = a1_to_rowcol(f"{app_config['NAME_COL']}1")[1]
-    mobs_in_column = worksheet.col_values(mobs_col_index)
-    for data in tod_data.items():
-        mob, string_info = data
-        found_row_index = -1
-        for i, name_in_sheet in enumerate(mobs_in_column):
-            if str(name_in_sheet).lower() == str(mob).lower():
-                found_row_index = i
-                break
-        if found_row_index != -1:
-            row_number_to_update = found_row_index + 1
-            tod_col_label = f"{app_config.get('TOD_COL')}{row_number_to_update}"
+    try:
+        mobs_col_index = a1_to_rowcol(f"{app_config['NAME_COL']}1")[1]
+        mobs_in_column = worksheet.col_values(mobs_col_index)
+    except gspread.exceptions.APIError as e:
+        logger.error(f"Failed to get column values from Google Sheet: {e}")
+        return
+
+    for mob, string_info in tod_data.items():
+        try:
+            mob_name_lower = str(mob).lower().strip()
             info: dict = json.loads(string_info)
-            gmt_time = info.get("gmt")
             day = info.get("day")
+            gmt_time = info.get("gmt")
             update_time = info.get("created_at")
-            if isinstance(gmt_time, str):
-                pacific_time_object = await convert_gmt_to_pacific(gmt_time)
-                if isinstance(pacific_time_object, datetime):
-                    pacific_time_str_output = pacific_time_object.strftime("%m-%d-%Y %H:%M:%S")
-                    worksheet.update_acell(tod_col_label, pacific_time_str_output)
-                    if update_time:
-                        worksheet.update_acell(f"{app_config.get('LAST_UPDATED_COL')}{row_number_to_update}", update_time)
-                    if day:
-                        logger.debug(day)
-                        if int(day) != 0:
-                            day = day + 1
-                        worksheet.update_acell(f"{app_config.get('DAYS_FOR_HQ_COL')}{row_number_to_update}", day)
+
+            found_row_index = -1
+            for i, name_in_sheet in enumerate(mobs_in_column):
+                if str(name_in_sheet).lower().strip() == mob_name_lower:
+                    found_row_index = i
+                    break
+
+            if found_row_index != -1:
+                row_number_to_update = found_row_index + 1
+                if isinstance(gmt_time, str):
+                    pacific_time_object = await convert_gmt_to_pacific(gmt_time)
+                    if isinstance(pacific_time_object, datetime):
+                        pacific_time_str_output = pacific_time_object.strftime("%m-%d-%Y %H:%M:%S")
+                        worksheet.update_acell(f"{app_config.get('TOD_COL')}{row_number_to_update}", pacific_time_str_output)
+
+                if update_time:
+                    worksheet.update_acell(f"{app_config.get('LAST_UPDATED_COL')}{row_number_to_update}", update_time)
+
+                if day is not None:
+                    is_new_day = mob_name_lower not in server_cache or server_cache.get(mob_name_lower, {}).get("day") != day
+
+                    current_day_val = int(day)
+                    day_to_write = current_day_val + 1 if current_day_val > 0 else current_day_val
+
+                    if is_new_day:
+                        logger.debug(f"New day value '{day}' received for {mob_name_lower}. Updating sheet and cache.")
+
+                        day_to_write = int(day) + 1
+                        worksheet.update_acell(f"{app_config.get('DAYS_FOR_HQ_COL')}{row_number_to_update}", day_to_write)
+
+                        if mob_name_lower not in server_cache:
+                            server_cache[mob_name_lower] = {}
+                        server_cache[mob_name_lower]["day"] = day
+
+                        save_cache_to_file()
+                else:
+                    pass
+            else:
+                logger.warning(f"Mob '{mob}' not found in the sheet. Skipping update.")
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Error decoding JSON for mob '{mob}': {e}. Data: '{string_info}'")
+        except Exception as e:
+            logger.exception(f"An unexpected error occurred while processing update for mob '{mob}': {e}")
 
 
 async def convert_gmt_to_pacific(gmt_time_str: str):

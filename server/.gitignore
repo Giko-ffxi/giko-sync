@@ -174,3 +174,4 @@ cython_debug/
 .pypirc
 
 key.json
+server_cache.json

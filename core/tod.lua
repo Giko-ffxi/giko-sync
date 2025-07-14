@@ -61,7 +61,8 @@ tod.get = function()
                         local c_tod_json = cache.get(death.cache, mob.names.nq[1])
                         local c_tod = (c_tod_json and json:decode(c_tod_json)) or nil
                         if c_tod == nil or (c_tod.created_at ~= nil and s_tod.created_at ~= nil and c_tod.created_at < s_tod.created_at) then
-                            if c_tod == nil or s_tod.gmt ~= c_tod.gmt or s_tod.day ~= c_tod.day then
+                            local expected_server_day = c_tod.day > 0 and c_tod.day + 1 or c_tod.day
+                            if c_tod == nil or s_tod.gmt ~= c_tod.gmt or s_tod.day ~= expected_server_day then
                                 table.insert(tell,
                                     string.format("@giko set-tod %s %s %s --force", mob.names.nq[1],
                                         common.gmt_to_local_date(s_tod.gmt), s_tod.day or 0))
