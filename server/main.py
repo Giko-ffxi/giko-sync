@@ -250,7 +250,7 @@ async def initialize_config():
             
         api_config = config["GOOGLE_SHEETS_API"]
         sheet_config = config["SHEET_CONFIG"]
-        cache_config = config.get("CACHE", {})
+        cache_config = config["CACHE"]
 
         scopes_str = api_config.get("SCOPES", "")
         app_config["SCOPES"] = [scope.strip() for scope in scopes_str.split(",") if scope.strip()]
@@ -293,8 +293,9 @@ async def initialize_google_sheet():
 
     service_account_path = app_config.get("SERVICE_ACCOUNT_FILE_PATH")
     scopes = app_config.get("SCOPES", [])
-    spreadsheet_url = app_config.get("SPREADSHEET_URL")
-    worksheet_name = app_config.get("WORKSHEET_NAME")
+    spreadsheet_url = app_config.get("SPREADSHEET_URL", "NONE")
+    worksheet_name = app_config.get("WORKSHEET_NAME", "NONE")
+    spreadsheet = None
 
     if not service_account_path:
         logger.error("Service account file path not configured.")
@@ -325,7 +326,7 @@ async def initialize_google_sheet():
     except gspread.exceptions.WorksheetNotFound:        
         available_sheets = []
         try:
-            if 'spreadsheet' in locals():
+            if 'spreadsheet' in locals() and spreadsheet:
                 available_sheets = [ws.title for ws in spreadsheet.worksheets()]
         except Exception:
             pass
