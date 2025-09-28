@@ -56,7 +56,7 @@ server_cache = {}
 sheet_cache = {
     "data": None,
     "timestamp": 0,
-    "ttl": 30  # seconds
+    "ttl": 30,  # seconds
 }
 
 update_queue: list[dict] = []
@@ -65,6 +65,7 @@ update_lock = asyncio.Lock()
 
 def retry_on_api_error(max_retries: int = 3, delay: float = 1.0):
     """Decorator to retry Google Sheets API calls on transient errors."""
+
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
@@ -75,10 +76,10 @@ def retry_on_api_error(max_retries: int = 3, delay: float = 1.0):
                     if attempt == max_retries - 1:
                         logger.error(f"Max retries ({max_retries}) reached for {func.__name__}: {e}")
                         raise
-                    
-                    wait_time = delay * (2 ** attempt)
+
+                    wait_time = delay * (2**attempt)
                     logger.warning(f"Attempt {attempt + 1} failed for {func.__name__}: {e}. Retrying in {wait_time}s...")
-                    
+
                     if asyncio.iscoroutinefunction(func):
                         await asyncio.sleep(wait_time)
                     else:
@@ -87,70 +88,64 @@ def retry_on_api_error(max_retries: int = 3, delay: float = 1.0):
                     logger.error(f"Non-retryable error in {func.__name__}: {e}")
                     raise
             return None
+
         return wrapper
+
     return decorator
 
 
 class SheetManager:
     """Manages Google Sheets operations with caching and batch updates."""
-    
+
     def __init__(self, worksheet: gspread.Worksheet):
         self.worksheet = worksheet
-        self.cache_ttl = app_config.get('CACHE_TTL', 30)
-        
+        self.cache_ttl = app_config.get("CACHE_TTL", 30)
+
     def is_cache_valid(self) -> bool:
         """Check if cached sheet data is still valid."""
-        return (
-            sheet_cache["data"] is not None and
-            time.time() - sheet_cache["timestamp"] < self.cache_ttl
-        )
-    
+        return sheet_cache["data"] is not None and time.time() - sheet_cache["timestamp"] < self.cache_ttl
+
     @retry_on_api_error()
     async def get_sheet_data(self, force_refresh: bool = False) -> list[list[str]]:
         """Get sheet data with caching."""
         if not force_refresh and self.is_cache_valid():
             logger.debug("Using cached sheet data")
             return sheet_cache["data"]
-        
+
         try:
-            logger.info("Fetching fresh data from Google Sheets")
             all_values = self.worksheet.get_all_values()
-            
+
             sheet_cache["data"] = all_values
             sheet_cache["timestamp"] = time.time()
-            
+
             return all_values
-            
+
         except Exception as e:
             logger.error(f"Failed to fetch sheet data: {e}")
             if sheet_cache["data"] is not None:
                 logger.warning("Returning stale cached data due to API error")
                 return sheet_cache["data"]
             raise
-    
+
     @retry_on_api_error()
     async def batch_update_cells(self, updates: list[dict]) -> bool:
         """Perform batch updates to reduce API calls."""
         if not updates:
             return True
-            
+
         try:
             cell_updates = []
-            
+
             for update in updates:
-                cell_updates.append({
-                    'range': update['range'],
-                    'values': [[update['value']]]
-                })
-            
+                cell_updates.append({"range": update["range"], "values": [[update["value"]]]})
+
             if cell_updates:
                 self.worksheet.batch_update(cell_updates)
-                logger.info(f"Successfully batch updated {len(cell_updates)} cells")
-                
+
                 sheet_cache["data"] = None
-                
+
             return True
-            
+
         except Exception as e:
             logger.error(f"Batch update failed: {e}")
             return False
@@ -159,23 +154,23 @@ class SheetManager:
 def load_cache():
     """Load cache from file."""
     global server_cache
-    
+
     try:
         if not os.path.exists(CACHE_FILE_PATH):
             logger.info("Cache file not found. Starting with empty cache.")
             server_cache = {}
             return
-            
+
         with open(CACHE_FILE_PATH, "r", encoding="utf-8") as f:
             content = f.read().strip()
             if not content:
                 logger.warning("Cache file is empty. Starting with empty cache.")
                 server_cache = {}
                 return
-                
+
             server_cache = json.loads(content)
             logger.info(f"Successfully loaded cache with {len(server_cache)} entries")
-            
+
     except json.JSONDecodeError as e:
         logger.error(f"Cache file contains invalid JSON: {e}. Starting with empty cache.")
         server_cache = {}
@@ -185,7 +180,7 @@ def load_cache():
             logger.info(f"Corrupted cache file backed up to {backup_path}")
         except OSError:
             pass
-            
+
     except (IOError, OSError) as e:
         logger.error(f"Error reading cache file: {e}. Starting with empty cache.")
         server_cache = {}
@@ -197,18 +192,18 @@ def load_cache():
 def save_cache():
     """Save cache to file with atomic writes."""
     temp_file = f"{CACHE_FILE_PATH}.tmp"
-    
+
     try:
         with open(temp_file, "w", encoding="utf-8") as f:
             json.dump(server_cache, f, indent=2, ensure_ascii=False)
-        
+
         if os.path.exists(CACHE_FILE_PATH):
             backup_path = f"{CACHE_FILE_PATH}.backup"
             os.replace(CACHE_FILE_PATH, backup_path)
-            
+
         os.replace(temp_file, CACHE_FILE_PATH)
         logger.debug(f"Cache saved successfully with {len(server_cache)} entries")
-        
+
     except (IOError, OSError) as e:
         logger.critical(f"Could not save cache to file: {e}")
         try:
@@ -223,7 +218,7 @@ def save_cache():
 async def initialize_config():
     """Initialize configuration."""
     global app_config, config
-    config_file_to_read = os.path.join(application_base_dir, "config.ini")    
+    config_file_to_read = os.path.join(application_base_dir, "config.ini")
 
     config = configparser.ConfigParser()
 
@@ -247,7 +242,7 @@ async def initialize_config():
 
         if "GOOGLE_SHEETS_API" not in config:
             raise ValueError("[GOOGLE_SHEETS_API] section not found in config file.")
-            
+
         api_config = config["GOOGLE_SHEETS_API"]
         sheet_config = config["SHEET_CONFIG"]
         cache_config = config["CACHE"]
@@ -275,7 +270,6 @@ async def initialize_config():
         app_config["CACHE_TTL"] = int(cache_config.get("SHEET_CACHE_SECONDS", "30"))
         app_config["MAX_RETRY_ATTEMPTS"] = int(cache_config.get("MAX_RETRY_ATTEMPTS", "3"))
         app_config["RETRY_DELAY"] = float(cache_config.get("RETRY_DELAY_SECONDS", "1.0"))
-        
 
         sheet_cache["ttl"] = app_config["CACHE_TTL"]
 
@@ -323,10 +317,10 @@ async def initialize_google_sheet():
     except gspread.exceptions.SpreadsheetNotFound as e:
         logger.error(f"Spreadsheet not found: {e}. Check URL and permissions.")
         worksheet = None
-    except gspread.exceptions.WorksheetNotFound:        
+    except gspread.exceptions.WorksheetNotFound:
         available_sheets = []
         try:
-            if 'spreadsheet' in locals() and spreadsheet:
+            if "spreadsheet" in locals() and spreadsheet:
                 available_sheets = [ws.title for ws in spreadsheet.worksheets()]
         except Exception:
             pass
@@ -344,18 +338,18 @@ async def lifespan(app: FastAPI):
         await initialize_config()
         await initialize_google_sheet()
         load_cache()
-        
+
         update_task = asyncio.create_task(process_update_queue())
-        
+
         yield
-        
+
         update_task.cancel()
         try:
             await update_task
         except asyncio.CancelledError:
             pass
         save_cache()
-        
+
     except Exception as e:
         logger.error(f"Error during application lifecycle: {e}")
         raise
@@ -371,9 +365,9 @@ async def health_check():
         "status": "OK" if worksheet else "DEGRADED",
         "google_sheet_initialized": worksheet is not None,
         "cache_entries": len(server_cache),
-        "sheet_cache_valid": sheet_cache["data"] is not None and time.time() - sheet_cache["timestamp"] < sheet_cache["ttl"]
+        "sheet_cache_valid": sheet_cache["data"] is not None and time.time() - sheet_cache["timestamp"] < sheet_cache["ttl"],
     }
-    
+
     if worksheet:
         return health_status
     else:
@@ -397,7 +391,7 @@ async def get_tod():
         if not all_values or len(all_values) < 2:
             logger.warning("No data found in sheet")
             return Response(content="", media_type="text/plain; charset=utf-8")
-        
+
         try:
             name_col_idx = a1_to_rowcol(f"{app_config['NAME_COL']}1")[1] - 1
             tod_col_idx = a1_to_rowcol(f"{app_config['TOD_COL']}1")[1] - 1
@@ -453,7 +447,7 @@ async def get_tod():
                     "gmt": gmt_str_output,
                     "name": name,
                 }
-                
+
                 json_part = json.dumps(data_for_json, separators=(",", ":"))
                 string = f"{normalized_name}|{json_part}"
                 strings.append(string)
@@ -479,18 +473,14 @@ async def get_tod():
 async def set_tod(tod_data: dict = Body(...)):
     """Queue TOD updates for batch processing."""
     logger.debug(f"Received POST data with {len(tod_data)} entries")
-    
+
     if not tod_data:
         return {"status": "error", "message": "No data provided"}
-    
+
     async with update_lock:
         for mob, string_info in tod_data.items():
-            update_queue.append({
-                "mob": mob,
-                "data": string_info,
-                "timestamp": time.time()
-            })
-    
+            update_queue.append({"mob": mob, "data": string_info, "timestamp": time.time()})
+
     return {"status": "accepted", "queued_updates": len(tod_data)}
 
 
@@ -499,17 +489,17 @@ async def process_update_queue():
     while True:
         try:
             await asyncio.sleep(2)  # process queue every 2 seconds
-            
+
             async with update_lock:
                 if not update_queue:
                     continue
-                    
+
                 batch = update_queue[:15]
                 update_queue[:15] = []
-            
+
             if batch:
                 await process_update_batch(batch)
-                
+
         except asyncio.CancelledError:
             logger.info("Update queue processor cancelled")
             break
@@ -527,28 +517,26 @@ async def process_update_batch(batch: list[dict]):
     try:
         sheet_manager = SheetManager(worksheet)
         all_values = await sheet_manager.get_sheet_data(force_refresh=True)
-        
+
         if not all_values:
             logger.error("Could not fetch sheet data for updates")
             return
 
         name_col_idx = a1_to_rowcol(f"{app_config['NAME_COL']}1")[1]
-        name_values = [row[name_col_idx - 1] if len(row) > name_col_idx - 1 else "" 
-                      for row in all_values[1:]]
-        
-        name_to_row = {name.lower().strip(): idx + 2 
-                      for idx, name in enumerate(name_values) if name.strip()}
+        name_values = [row[name_col_idx - 1] if len(row) > name_col_idx - 1 else "" for row in all_values[1:]]
+
+        name_to_row = {name.lower().strip(): idx + 2 for idx, name in enumerate(name_values) if name.strip()}
 
         updates = []
-        
+
         for update_item in batch:
             try:
                 mob = update_item["mob"]
                 string_info = update_item["data"]
-                
+
                 mob_name_lower = str(mob).lower().strip()
                 info = json.loads(string_info)
-                
+
                 day = info.get("day")
                 gmt_time = info.get("gmt")
                 update_time = info.get("created_at")
@@ -563,30 +551,20 @@ async def process_update_batch(batch: list[dict]):
                         pacific_time = await convert_gmt_to_pacific(gmt_time)
                         if isinstance(pacific_time, datetime):
                             pacific_str = pacific_time.strftime("%m-%d-%Y %H:%M:%S")
-                            updates.append({
-                                'range': f"{app_config['TOD_COL']}{row_number}",
-                                'value': pacific_str
-                            })
+                            updates.append({"range": f"{app_config['TOD_COL']}{row_number}", "value": pacific_str})
                     except Exception as e:
                         logger.error(f"Error converting time for {mob}: {e}")
 
                 if update_time:
-                    updates.append({
-                        'range': f"{app_config['LAST_UPDATED_COL']}{row_number}",
-                        'value': str(update_time)
-                    })
+                    updates.append({"range": f"{app_config['LAST_UPDATED_COL']}{row_number}", "value": str(update_time)})
 
                 if day is not None:
                     try:
-                        is_new_day = (mob_name_lower not in server_cache or 
-                                    server_cache.get(mob_name_lower, {}).get("day") != day)
+                        is_new_day = mob_name_lower not in server_cache or server_cache.get(mob_name_lower, {}).get("day") != day
 
                         if is_new_day:
                             day_to_write = int(day) + 1
-                            updates.append({
-                                'range': f"{app_config['DAYS_FOR_HQ_COL']}{row_number}",
-                                'value': str(day_to_write)
-                            })
+                            updates.append({"range": f"{app_config['DAYS_FOR_HQ_COL']}{row_number}", "value": str(day_to_write)})
 
                             if mob_name_lower not in server_cache:
                                 server_cache[mob_name_lower] = {}
@@ -619,7 +597,7 @@ async def convert_gmt_to_pacific(gmt_time_str: str) -> Optional[datetime]:
         pacific_timezone = ZoneInfo("America/Los_Angeles")
         pacific_time = aware_gmt_time.astimezone(pacific_timezone)
         return pacific_time
-        
+
     except (ValueError, parser.ParserError) as e:
         logger.error(f"Could not parse GMT time string '{gmt_time_str}': {e}")
         return None
@@ -639,7 +617,7 @@ async def convert_pacific_to_gmt(pacific_time_str: str) -> Optional[datetime]:
         aware_pacific_time = naive_pacific_time.replace(tzinfo=pacific_timezone)
         gmt_time = aware_pacific_time.astimezone(timezone.utc)
         return gmt_time
-        
+
     except (ValueError, parser.ParserError) as e:
         logger.error(f"Could not parse Pacific time string '{pacific_time_str}': {e}")
         return None
